@@ -1,0 +1,11 @@
+{
+  "project": "SNOW VOC 미니 프로젝트",
+  "phase": "0-mvp",
+  "steps": [
+    { "step": 0, "name": "project-setup", "status": "pending" },
+    { "step": 1, "name": "collect", "status": "pending" },
+    { "step": 2, "name": "preprocess", "status": "pending" },
+    { "step": 3, "name": "tag", "status": "pending" },
+    { "step": 4, "name": "analyze", "status": "pending" }
+  ]
+}

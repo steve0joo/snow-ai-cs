@@ -7,3 +7,22 @@ tsconfig.tsbuildinfo
 # phase execution outputs
 phases/**/phase*-output.json
 phases/**/step*-output.json
+
+# secrets — 절대 커밋 금지 (유출은 되돌릴 수 없다)
+.env
+
+# 수집한 원본 리뷰 — 재배포 금지. 공개는 집계 결과와 코드만
+data/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# reports 산출물 (원본 인용 가능성 있어 기본 제외; 공개할 집계본만 선별 add)
+report.xlsx
+
+# os
+.DS_Store
