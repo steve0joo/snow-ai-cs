@@ -2,10 +2,34 @@
   "project": "SNOW VOC 미니 프로젝트",
   "phase": "0-mvp",
   "steps": [
-    { "step": 0, "name": "project-setup", "status": "pending" },
-    { "step": 1, "name": "collect", "status": "pending" },
-    { "step": 2, "name": "preprocess", "status": "pending" },
-    { "step": 3, "name": "tag", "status": "pending" },
-    { "step": 4, "name": "analyze", "status": "pending" }
-  ]
+    {
+      "step": 0,
+      "name": "project-setup",
+      "status": "completed",
+      "started_at": "2026-09-06T13:16:35+0900",
+      "completed_at": "2026-09-06T13:16:35+0900",
+      "summary": "생성: src/config.py(ROOT/DATA_RAW/DATA_PROCESSED/TAXONOMY_PATH/DOCS 경로 상수, APPS[snow,b612], load_api_key()). .venv 생성+requirements.txt 설치. data/raw·data/processed 확인."
+    },
+    {
+      "step": 1,
+      "name": "collect",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "preprocess",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "tag",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "analyze",
+      "status": "pending"
+    }
+  ],
+  "created_at": "2026-09-06T13:16:35+0900"
 }
