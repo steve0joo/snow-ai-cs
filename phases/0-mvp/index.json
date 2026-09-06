@@ -13,7 +13,10 @@
     {
       "step": 1,
       "name": "collect",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-09-06T13:18:26+0900",
+      "completed_at": "2026-09-06T13:20:00+0900",
+      "summary": "생성: src/collect.py(fetch_app_reviews 별점 층화 수집 + app() 히스토그램으로 원본 분포 기록, sleep(1) 딜레이, datetime default=str 저장). 수집 결과 snow 250건·b612 250건(각 별점 층화 1점100/2점50/3점50/4점25/5점25). data/raw/{name}_reviews.json·{name}_rating_dist.json 저장(gitignore로 미커밋)."
     },
     {
       "step": 2,
