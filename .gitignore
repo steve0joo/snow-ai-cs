@@ -23,6 +23,7 @@ venv/
 
 # reports 산출물 (원본 인용 가능성 있어 기본 제외; 공개할 집계본만 선별 add)
 report.xlsx
+PORTFOLIO.md
 
 # os
 .DS_Store
