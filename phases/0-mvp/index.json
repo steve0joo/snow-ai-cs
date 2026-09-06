@@ -39,7 +39,7 @@
       "name": "analyze",
       "status": "completed",
       "started_at": "2026-09-06T13:34:10+0900",
-      "completed_at": "2026-09-06T13:40:00+0900",
+      "completed_at": "2026-09-06T13:39:27+0900",
       "summary": "생성: src/analyze.py(load_tagged, crosstab_type_grade 유형1~7×등급A/B/C 크로스탭[0·검수큐 제외], summarize 유형분포·앱별 SNOW/B612 차이·등급비율·product_issue·복합유형[3↔5], audit_agreement review_id 조인 일치율 훅[human_audit.csv 없으면 None], write_report 8섹션 docs/report.md + docs/report.xlsx[openpyxl, gitignore], pct로 0나눗셈 방어). 산출물 docs/report.md: 표본 495건·문의(1~7) 400건, 등급 A 38.8%/B 27.2%/C 33.5%(추정치 명시), 최다 유형 2 촬영·기능(35.4%), product_issue=Y 254건, 검수큐 5건, 한계 4가지·가설 vs 실측 포함. 리뷰 원문 미인용(집계·taxonomy명만). report.md는 커밋, report.xlsx는 gitignore."
     }
   ],
