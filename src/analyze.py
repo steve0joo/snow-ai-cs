@@ -26,6 +26,12 @@ def _type_names() -> dict[int, str]:
     return {int(k): v["name"] for k, v in tx["axis1_type"].items()}
 
 
+def _grade_defs() -> dict[str, dict]:
+    """taxonomy.json에서 챗봇 등급 A/B/C의 이름·정의를 읽는다(하드코딩 금지)."""
+    tx = json.loads(config.TAXONOMY_PATH.read_text(encoding="utf-8"))
+    return tx["axis2_bot_grade"]
+
+
 def load_tagged() -> pd.DataFrame:
     """tagged.csv를 읽어 반환(review_id가 조인 키)."""
     return pd.read_csv(config.DATA_PROCESSED / "tagged.csv")
@@ -129,20 +135,39 @@ def summarize(df: pd.DataFrame) -> dict:
     }
 
 
+def cohen_kappa(a: pd.Series, b: pd.Series) -> float:
+    """두 라벨 시리즈의 Cohen's kappa(우연 일치 보정). NaN 없는 정렬 시리즈 가정."""
+    a, b = a.astype(str).tolist(), b.astype(str).tolist()
+    n = len(a)
+    if n == 0:
+        return 0.0
+    po = sum(x == y for x, y in zip(a, b)) / n
+    pe = sum((a.count(c) / n) * (b.count(c) / n) for c in set(a) | set(b))
+    return 0.0 if pe >= 1 else round((po - pe) / (1 - pe), 3)
+
+
 def audit_agreement(df: pd.DataFrame, human_csv_path=HUMAN_AUDIT_PATH) -> dict | None:
-    """human_audit.csv가 있으면 review_id로 조인해 LLM vs 수동 일치율 산출, 없으면 None(훅)."""
+    """human_audit.csv가 있으면 review_id로 조인해 LLM vs 검수 일치율·kappa 산출, 없으면 None(훅)."""
     if not human_csv_path.exists():
         return None
     human = pd.read_csv(human_csv_path)
     merged = df.merge(human, on="review_id", suffixes=("_llm", "_human"))  # 위치 아닌 키 조인
-    n = len(merged)
-    if n == 0:
+    if len(merged) == 0:
         return None
-    out = {"n": n}
+    out = {"n": len(merged)}
+    # 유형: 검수큐(null) 제외 후 int로 정규화해 비교(2.0 vs 2 오불일치 방지).
     if {"type_code_llm", "type_code_human"} <= set(merged.columns):
-        out["type_agreement"] = pct(int((merged["type_code_llm"] == merged["type_code_human"]).sum()), n)
+        t = merged.dropna(subset=["type_code_llm", "type_code_human"])
+        tl, th = t["type_code_llm"].astype(int), t["type_code_human"].astype(int)
+        out["type_n"] = len(t)
+        out["type_agreement"] = pct(int((tl.values == th.values).sum()), len(t))
+        out["type_kappa"] = cohen_kappa(tl, th)
+    # 등급: 유형0은 등급 공란 → 양쪽 등급이 있는 건만 비교(공란끼리를 불일치로 세지 않음).
     if {"bot_grade_llm", "bot_grade_human"} <= set(merged.columns):
-        out["grade_agreement"] = pct(int((merged["bot_grade_llm"] == merged["bot_grade_human"]).sum()), n)
+        g = merged.dropna(subset=["bot_grade_llm", "bot_grade_human"])
+        out["grade_n"] = len(g)
+        out["grade_agreement"] = pct(int((g["bot_grade_llm"].values == g["bot_grade_human"].values).sum()), len(g))
+        out["grade_kappa"] = cohen_kappa(g["bot_grade_llm"], g["bot_grade_human"])
     return out
 
 
@@ -177,24 +202,61 @@ def write_report(df: pd.DataFrame, ct: pd.DataFrame, summ: dict, audit: dict | N
     snow_lean = max(s["app_gaps"], key=lambda x: x["gap"], default=None)
     b612_lean = min(s["app_gaps"], key=lambda x: x["gap"], default=None)
 
+    names = _type_names()
+    grades = _grade_defs()
+    zero_pct = next((t['pct'] for t in s['type_dist'] if t['code'] == 0), 0.0)
+
     m = []
     m.append("# SNOW·B612 앱 리뷰 VOC 유형 분석 리포트\n")
     m.append(
-        f"> 표본 {s['n_tagged']}건(태깅 완료, 검수큐 {s['n_null']}건 제외) · "
-        f"기간 {s['date_min']}~{s['date_max']} · 구글플레이 한국어 · "
-        f"SNOW {s['app_counts'].get('snow', '?')} / B612 {s['app_counts'].get('b612', '?')}\n"
+        "**무엇을 읽는 문서인가.** 카메라·AI 앱 SNOW·B612의 구글플레이 리뷰를 모아, 리뷰 하나하나를 "
+        "**(1) 문의 유형**과 **(2) 챗봇 자동화 가능 등급**으로 분류하고 집계한 1회성 VOC 분석이다. "
+        "\"CS 문의가 어떤 유형에 몰리는가\"와 \"그중 챗봇으로 자동 응대할 수 있는 비율은 얼마인가\"를 "
+        "추정하는 것이 목적이다.\n"
+    )
+    m.append(
+        f"> **표본** {s['n_tagged']}건(태깅 완료, 판단 보류 {s['n_null']}건 제외) · "
+        f"**기간** {s['date_min']}~{s['date_max']} · **채널** 구글플레이 한국어 · "
+        f"**앱** SNOW {s['app_counts'].get('snow', '?')}건 / B612 {s['app_counts'].get('b612', '?')}건\n"
+    )
+    tldr = (
+        f"**한 줄 결론.** 실질 문의(무내용 제외) {s['n_inquiries']}건 중 가장 많은 유형은 "
+        f"**{top['name']}**({top['pct']}%)이고, **챗봇이 바로 답할 수 있는(A등급) 문의는 {s['auto_a']}%**"
+        f"(유저 상태 조회가 필요한 B등급까지 더하면 {s['auto_ab']}%)다. "
+        f"**단, 이 비율은 자동화 '가능성 추정치'이지 실제 문의가 그만큼 줄어든다는 뜻이 아니다.**"
+    )
+    if audit and "type_kappa" in audit:
+        tldr += (
+            f" 별도 독립 검수에서 **유형 분류는 신뢰할 만했지만(일치율 {audit['type_agreement']}%)**, "
+            f"**챗봇 등급 판정은 사람 검토가 필요한 수준(일치율 {audit['grade_agreement']}%)**으로 나타났다."
+        )
+    m.append(tldr + "\n")
+
+    # 분류 체계(용어) — 이후 모든 섹션을 읽기 위한 최소 지식
+    m.append("## 분류 체계 한눈에 (먼저 읽기)\n")
+    m.append("이 리포트의 모든 숫자는 아래 **두 개의 축 + 한 개의 플래그**로 매겨졌다.\n")
+    type_line = " · ".join(f"**{c}** {names[c]}" for c in [1, 2, 3, 4, 5, 6, 7] if c in names)
+    m.append(
+        f"- **① 유형 — \"무엇에 대한 문의인가\"**: {type_line}. "
+        f"그리고 **0** {names.get(0, '분석 제외')}(단순 칭찬·비난, 내용 없음 → 집계에서 대부분 제외).\n"
+    )
+    grade_line = " · ".join(f"**{g}** {d['name']}({d['def']})" for g, d in grades.items())
+    m.append(f"- **② 챗봇 자동화 등급 — \"챗봇이 얼마나 스스로 답할 수 있나\"**: {grade_line}.\n")
+    m.append("- **플래그 product_issue(Y/N)**: 챗봇으로 막을 게 아니라 **앱 자체를 고쳐야 하는** 이슈인지.\n")
+    m.append(
+        "→ 핵심은 **유형(무엇, What)과 등급(그래서 챗봇이 되나, So what)을 별도 축으로 분리**했다는 점이다. "
+        "같은 유형이라도 챗봇 자동화 난이도는 A~C로 갈리기 때문이다.\n"
     )
 
-    # 1. 요약 3줄
+    # 1. 요약
     m.append("## 1. 요약 (3줄)\n")
     m.append(
-        f"- 실질 문의(유형 1~7) {s['n_inquiries']}건 중 최다 유형은 "
-        f"**{top['name']}**({top['pct']}%)이며, 무내용(0번)은 전체 태깅의 "
-        f"{next((t['pct'] for t in s['type_dist'] if t['code'] == 0), 0.0)}%다.\n"
-        f"- 챗봇 **완전 자동(A등급) 후보는 문의의 {s['auto_a']}%**, 백엔드 연동을 포함한 "
-        f"A+B는 {s['auto_ab']}%다 — **자동화 가능 비율은 추정치이지 실제 인입 감소율이 아니다.**\n"
-        f"- SNOW와 B612는 자매 앱이지만 유형 분포가 갈린다(3항 참조), "
-        f"앱을 고쳐야 하는 신호(product_issue=Y)가 {s['product_issue_y']}건 잡혔다.\n"
+        f"- **유형 분포**: 실질 문의 {s['n_inquiries']}건의 최다 유형은 **{top['name']}**({top['pct']}%), "
+        f"내용 없는 리뷰(0번)는 전체 태깅의 {zero_pct}%였다.\n"
+        f"- **자동화 여지**: 챗봇 완전 자동(A) 후보 {s['auto_a']}%, 백엔드 연동 포함(A+B) {s['auto_ab']}% "
+        f"— **어디까지나 추정치이며 실제 문의 인입 감소율이 아니다.**\n"
+        f"- **앱 차이·개선 신호**: 자매 앱이지만 SNOW와 B612의 유형 분포가 갈렸고(3항), "
+        f"앱을 고쳐야 하는 신호(product_issue=Y)가 {s['product_issue_y']}건 잡혔다(6항).\n"
     )
 
     # 2. 방법
@@ -203,22 +265,27 @@ def write_report(df: pd.DataFrame, ct: pd.DataFrame, summ: dict, audit: dict | N
         f"- **표본**: 구글플레이 한국어 리뷰 {s['n_tagged']}건(앱당 ~250, 별점 층화). "
         "무작위가 아니라 별점 층화 추출이라 모집단을 그대로 대표하지 않는다(ADR-005).\n"
         f"- **기간**: {s['date_min']} ~ {s['date_max']} (리뷰 작성월 기준).\n"
-        "- **태깅**: taxonomy(2축+플래그, `taxonomy.json`)로 LLM 1차 배치 태깅(temperature=0). "
-        f"파싱 실패·범위 밖은 검수큐(null)로 두었고 이번 표본에서 {s['n_null']}건이다.\n"
+        "- **태깅**: 분류 체계(위 참조, `taxonomy.json`)에 따라 LLM으로 1차 자동 태깅했다(temperature=0, 재현성 확보). "
+        f"응답이 형식/범위를 벗어난 리뷰는 억지로 분류하지 않고 **판단 보류**로 빼두었으며, 이번 표본에서 {s['n_null']}건이다.\n"
     )
     if audit:
-        line = f"- **검수**: 수동 검수 {audit['n']}건 조인"
+        parts = [f"독립 검수 {audit['n']}건 조인(이번 회차는 2차 LLM 독립 교차검증 — 진짜 human audit 아님)"]
         if "type_agreement" in audit:
-            line += f", 유형 일치율 {audit['type_agreement']}%"
+            parts.append(f"유형 일치율 {audit['type_agreement']}%(Cohen κ={audit['type_kappa']})")
         if "grade_agreement" in audit:
-            line += f", 등급 일치율 {audit['grade_agreement']}%"
-        m.append(line + ".\n")
+            parts.append(f"등급 일치율 {audit['grade_agreement']}%"
+                         f"(κ={audit['grade_kappa']}, 등급 부여 {audit['grade_n']}건 기준·유형0 공란 제외)")
+        m.append("- **검수**: " + ", ".join(parts) + ". "
+                 "유형 축은 우연 일치 보정 후에도 신뢰할 만하나 등급 축은 일치가 낮아, "
+                 "챗봇 등급(A/B/C) 판정이 신뢰도의 약한 고리다(한계 4 참조).\n")
     else:
         m.append("- **검수**: `data/processed/human_audit.csv`(무작위 ~50건)를 넣으면 "
                  "`review_id` 조인으로 LLM vs 수동 일치율이 자동 산출된다(현재 미수행, 훅 준비됨).\n")
 
     # 3. 유형 분포 + 앱별 차이
     m.append("## 3. 유형 분포 + 앱별 차이 (SNOW vs B612)\n")
+    m.append("전체 리뷰를 유형별로 나눈 분포다. 이어지는 두 번째 표는 두 앱이 어떻게 다른지 "
+             "**Δ = SNOW % − B612 %**(양수면 SNOW에 더 많은 유형)로 비교한다.\n")
     m.append("| 코드 | 유형 | 건수 | 비율 |\n|---:|---|---:|---:|")
     for t in s["type_dist"]:
         m.append(f"| {t['code']} | {t['name']} | {t['n']} | {t['pct']}% |")
@@ -235,16 +302,18 @@ def write_report(df: pd.DataFrame, ct: pd.DataFrame, summ: dict, audit: dict | N
         )
 
     # 4. 크로스탭 (심장)
-    m.append("## 4. 유형 × 챗봇등급 크로스탭 (리포트의 심장)\n")
-    m.append("등급 A=완전 자동(정답 고정), B=조건부 자동(유저 상태 조회 필요), C=사람 필수(판정·감정). "
-             "유형 0(무내용)과 검수큐는 제외했다.\n")
+    m.append("## 4. 유형 × 챗봇등급 크로스탭 (이 리포트의 핵심 표)\n")
+    m.append("**행 = 문의 유형, 열 = 챗봇 자동화 등급**(A/B/C 정의는 위 '분류 체계' 참조). "
+             "각 유형의 문의가 자동화 난이도별로 어떻게 갈리는지 한눈에 보여준다. "
+             "유형 0(무내용)과 판단 보류분은 제외했다.\n")
     m.append(_md_crosstab(ct))
     m.append("")
 
     # 5. A등급 상위 유형 = 챗봇 자동화 후보
     m.append("## 5. 챗봇 자동화 후보 (A등급 상위 유형)\n")
     m.append(
-        f"문의(유형 1~7) 중 **완전 자동(A) {s['auto_a']}%**, A+B {s['auto_ab']}%. "
+        "**정답이 고정된 A등급 문의가 많이 몰린 유형일수록 챗봇 도입 효과가 크다.** "
+        f"문의(유형 1~7) 중 완전 자동(A) {s['auto_a']}%, A+B {s['auto_ab']}%. "
         "**이 자동화 가능 비율은 추정치이며, 실제 문의 인입 감소율이 아니다.**\n"
     )
     m.append("| 유형 | A 건수 | 유형 내 A 비중 |\n|---|---:|---:|")
@@ -265,6 +334,7 @@ def write_report(df: pd.DataFrame, ct: pd.DataFrame, summ: dict, audit: dict | N
 
     # 7. 가설(v0) vs 실측
     m.append("## 7. 가설(v0) vs 실측\n")
+    m.append("기획 단계에서 세운 가설(문서 `USER_JOURNEY`)이 실제 데이터로 맞았는지 대조한다.\n")
     g3 = s["grade_by_type"].get(3, {"A": 0, "B": 0, "C": 0})
     m.append("| 가설 (USER_JOURNEY v0) | 실측 | 판정 |\n|---|---|---|")
     m.append(
