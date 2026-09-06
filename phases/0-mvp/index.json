@@ -31,7 +31,7 @@
       "name": "tag",
       "status": "completed",
       "started_at": "2026-09-06T13:22:12+0900",
-      "completed_at": "2026-09-06T13:24:30+0900",
+      "completed_at": "2026-09-06T13:34:10+0900",
       "summary": "생성: src/tag.py(build_prompt taxonomy 전문+경계 few-shot+<review id>구분자, tag_batch 배치15건/콜·JSON강제·try/except파싱·type_code 범위(1~7,0)검증→범위밖/누락은 null 검수큐, _normalize로 type_code=0→bot_grade공란·부유형 1~7만·product_issue Y/N, tagged_by=llm). 모델 claude-haiku-4-5-20251001, temperature=0(이 SDK는 extra_body로 전달). 34콜 배치 append 저장 후 review_id 정렬 재저장. 산출물 data/processed/tagged.csv 500건·14컬럼(sample 8+태깅 6), type_code 채움율 0.990, 검수큐(null) 5건. tagged.csv는 gitignore(원문 미커밋)."
     },
     {
