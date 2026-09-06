@@ -21,7 +21,10 @@
     {
       "step": 2,
       "name": "preprocess",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-09-06T13:20:26+0900",
+      "completed_at": "2026-09-06T13:22:00+0900",
+      "summary": "생성: src/preprocess.py(load_raw 앱별 JSON 병합+app 컬럼, clean 스키마 정규화·중복/빈 리뷰 제거·userName 등 PII 드롭·date→YYYY-MM, build_sample 앱당 250 초과 시 별점 비율 유지 샘플). 산출물 data/processed/sample.csv 500건·8컬럼(review_id,app,store=google,lang=ko,rating,date,app_version,content), 앱별 snow250·b612250 각 별점 100/50/50/25/25 유지. userName 미포함 확인(PII). rating_dist.json은 raw에 유지."
     },
     {
       "step": 3,
